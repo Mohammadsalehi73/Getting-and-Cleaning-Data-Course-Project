@@ -1,68 +1,47 @@
-# Load Packages and get the Data
-
-url <- "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip"
-
-download.file(url, file.path(getwd(), "dataFiles.zip"))
-
-unzip(zipfile = "dataFiles.zip")
+# url <- "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip"
+#download.file(url)
+# consider we downloded the data and set the working directory in a way to include our data, then proceed below script.
 
 
-# Load the documents of activity labels and features
+file.path(getwd(), "getdata_projectfiles_UCI HAR Dataset.zip")
 
-activityLabels <- fread(file.path(getwd(), "UCI HAR Dataset/activity_labels.txt"), col.names = c("classLabels", "activityName"))
-
-features <- fread(file.path(getwd(), "UCI HAR Dataset/features.txt"), col.names = c("index", "featureNames"))
-
-#Mean and Standard deviation for For the column featureNames
-
-features_F <- grep("(mean|std)\\(\\)", features[, featureNames])
-
-measure <- features[features_F, featureNames]
-
-#Just Delate "()"
-measure <- gsub('[()]', '', measure)
+unzip(zipfile = "getdata_projectfiles_UCI HAR Dataset.zip")
 
 
+# Load txt files of the activity labels and features 
 
-# Load train datasets
+activityLabels <- read.table(file.path(getwd(), "UCI HAR Dataset/activity_labels.txt"), col.names = c("classLabels", "activityName"))
 
-trainX <- fread(file.path(getwd(), "UCI HAR Dataset/train/X_train.txt"))[, features_F, with = FALSE]
+NewfeaturesFile <- read.table(file.path(getwd(), "UCI HAR Dataset/features.txt"), col.names = c("index", "featureNames"))
 
-data.table::setnames(trainX, colnames(trainX), measure)
-
-trainY <- fread(file.path(getwd(), "UCI HAR Dataset/train/Y_train.txt"), col.names = c("Activity"))
-
-trainSubjects <- fread(file.path(getwd(), "UCI HAR Dataset/train/subject_train.txt"), col.names = c("SubjectNum"))
-
-#Combination of the documents
-train <- cbind(trainSubjects, trainY, trainX)
-
+# Extract only the data on mean and standard deviation
+WantedRows <- grep(".*mean.*|.*std.*", NewfeaturesFile [,2])
+featuresWanted.names <- NewfeaturesFile [WantedRows,2]
+mean_match = gsub('-mean', 'Mean', featuresWanted.names)
+std_match = gsub('-std', 'Std', featuresWanted.names)
+redundentRemove <- gsub('[-()]', '', featuresWanted.names)
 
 
-# Load test datasets
+# Now load the datasets
+train <- read.table(file.path(getwd(),"UCI HAR Dataset/train/X_train.txt"))
+trainActivities <- read.table(file.path(getwd(),"UCI HAR Dataset/train/Y_train.txt"))
+trainSubjects <- read.table(file.path(getwd(),"UCI HAR Dataset/train/subject_train.txt"))
+train <- cbind(trainSubjects, trainActivities, train)
 
-testX <- fread(file.path(getwd(), "UCI HAR Dataset/test/X_test.txt"))[, features_F, with = FALSE]
+test <- read.table(file.path(getwd(),"UCI HAR Dataset/test/X_test.txt"))
+testActivities <- read.table(file.path(getwd(),"UCI HAR Dataset/test/Y_test.txt"))
+testSubjects <- read.table(file.path(getwd(),"UCI HAR Dataset/test/subject_test.txt"))
+test <- cbind(testSubjects, testActivities, test)
 
-data.table::setnames(testX, colnames(testX), measure)
+# merge datasets and add labels
+mergedData <- rbind(train, test)
+colnames(mergedData) <- c("subject", "activity", featuresWanted.names)
 
-testY <- fread(file.path(getwd(), "UCI HAR Dataset/test/Y_test.txt"), col.names = c("Activity"))
+# turn activities & subjects into factors
+mergedData$activity <- factor(mergedData$activity, levels = activityLabels[,1], labels = activityLabels[,2])
+mergedData$subject <- as.factor(mergedData$subject)
 
-testSubjects <- fread(file.path(getwd(), "UCI HAR Dataset/test/subject_test.txt"), col.names = c("SubjectNum"))
+mergedData.melted <- melt(mergedData, id = c("subject", "activity"))
+mergedData.mean <- dcast(mergedData.melted, subject + activity ~ variable, mean)
 
-test <- cbind(testSubjects, testY, testX)
-
-
-# Merge datasets
-
-merged <- rbind(train, test)
-
-
-
-#Step 5. Creation of a second tidy dataset
-
-merged[["Activity"]] <- factor (merged[, Activity], levels = activityLabels [["classLabels"]], labels = activityLabels[["activityName"]])
-merged[["SubjectNum"]] <- as.factor(merged[, SubjectNum])
-merged <- reshape2::melt(data = merged, id = c("SubjectNum", "Activity"))
-merged <- reshape2::dcast(data = merged, SubjectNum + Activity  ~ variable, fun.aggregate = mean)
-
-data.table::fwrite(x = merged, file = "tidyData.txt", quote = FALSE)
+write.table(mergedData.mean, "tidy.txt", row.names = FALSE, quote = FALSE)
